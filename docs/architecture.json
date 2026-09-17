@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "闭源客户端 → OpenAI 兼容协议适配",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [820, 480],
+    "output": "docs/architecture.html"
+  },
+  "components": [
+    { "id": "app", "type": "external", "label": "天禧桌面端", "sublabel": "CEF / Electron 应用", "pos": [64, 66], "size": [142, 58] },
+    { "id": "capture", "type": "security", "label": "抓包工具", "sublabel": "Fiddler / mitmproxy", "pos": [258, 66], "size": [156, 58], "tag": "解密 HTTPS 流量" },
+    { "id": "tokenfile", "type": "database", "label": "token.txt", "sublabel": "本机凭据文件", "pos": [462, 66], "size": [142, 58], "tag": "永不入库" },
+
+    { "id": "agents", "type": "external", "label": "第三方 Agent", "sublabel": "OpenCode / Cursor / Continue", "pos": [64, 306], "size": [150, 74] },
+    { "id": "proxy", "type": "backend", "label": "本地协议适配器", "sublabel": "127.0.0.1:8787 · 零依赖", "pos": [292, 292], "size": [176, 102], "tag": "OpenAI ⇄ 私有协议" },
+    { "id": "upstream", "type": "cloud", "label": "云端服务", "sublabel": "SSE 流式返回", "pos": [546, 306], "size": [156, 74] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "一次性准备 · 截获凭据", "wraps": ["app", "capture", "tokenfile"] },
+    { "kind": "security-group", "label": "运行时 · 协议转换", "wraps": ["agents", "proxy", "upstream"] }
+  ],
+  "connections": [
+    { "id": "app-capture", "from": "app", "to": "capture", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "capture-token", "from": "capture", "to": "tokenfile", "variant": "emphasis" },
+    { "id": "token-proxy", "from": "tokenfile", "to": "proxy", "label": "注入 Bearer", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "agents-proxy", "from": "agents", "to": "proxy", "label": "OpenAI 格式", "variant": "emphasis" },
+    { "id": "proxy-upstream", "from": "proxy", "to": "upstream", "label": "私有格式 + SSE", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "难点一：凭据拿不到，只能抓流量",
+      "items": [
+        "token 是渲染进程 JS 内存变量，由 gateWayToken() 动态签发，从不写盘",
+        "用排除法逐个排除 4 个可能落盘的位置（见 README 表格）",
+        "CEF Local Storage 里只有被 Snappy 压缩切碎的 license 串，缺签名段",
+        "localStorage 的 token 键是 AES 加密（U2FsdGVkX1 前缀），需密钥",
+        "结论：只能从网络流量截获，因此给出 Fiddler 与 mitmproxy 两套方案"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "难点二：协议细节反直觉，必须实测",
+      "items": [
+        "请求体字段名把 merchantId 拼成了 meechantId —— 这是上游的真实拼写，照抄不能改",
+        "messages 字段要求 JSON 字符串而非 JSON 数组，直接传数组会失败",
+        "响应字段名未公开，用宽松适配依次尝试 content/text/delta/answer/output…",
+        "配套 --debug 模式打印上游原始报文，便于字段变更后快速定位",
+        "本地 7B 模型走原生 IPC（WSPluginHost.exe），私有协议无法接入，故走云端路线"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "工程形态",
+      "items": [
+        "零依赖：只用 Node 内置 http/https/fs/path，Node 18+ 直接跑",
+        "已适配 5 家客户端配置：OpenCode / Cursor / Continue / Cline，并说明 Claude Code 走 Anthropic 格式暂不支持",
+        "模型别名映射：tianxi / tianxi-deepseek / tianxi-qwen 对上游模型标识",
+        "凭据文件列入 .gitignore，仓库内不含任何真实 token"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# token 等同于登录凭据，绝不入库
+token.txt
+token*.txt
+*.token
+
+# 抓包/调试产物
+*.har
+*.pcap
+*.saz
+debug-*.log
+
+# 构建与系统
+node_modules/
+_ud/
+.archify-*
+.DS_Store
+Thumbs.db
